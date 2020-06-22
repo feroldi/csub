@@ -1,5 +1,7 @@
-use std::ops::{Add, Sub};
-use std::rc::Rc;
+use std::{
+    ops::{Add, Sub},
+    rc::Rc,
+};
 
 /// A byte position or offset into a source file's text buffer. This is used to
 /// map ASTs to soure code by indicating the position from which an AST node
@@ -22,10 +24,10 @@ pub trait Pos {
     fn to_usize(&self) -> usize;
 }
 
-pub const DUMMY_BPOS: BytePos = BytePos(0);
+pub const DUMMY_BYTEPOS: BytePos = BytePos(0);
 pub const DUMMY_SPAN: Span = Span {
-    start: DUMMY_BPOS,
-    end: DUMMY_BPOS,
+    start: DUMMY_BYTEPOS,
+    end: DUMMY_BYTEPOS,
 };
 
 impl Pos for BytePos {
@@ -70,31 +72,28 @@ pub struct Loc {
 pub struct SourceFile {
     /// File's content.
     pub src: Rc<String>,
-    /// Name of the loaded file.
-    name: String,
     /// Byte positions following every new line.
-    lines: Vec<BytePos>,
+    start_of_line_positions: Vec<BytePos>,
 }
 
 impl SourceFile {
     /// Constructs a new `SourceFile` from a string (the text buffer).
     ///
     /// Line positions are precomputed by this function.
-    pub fn new(name: String, src: String) -> SourceFile {
-        let mut lines = vec![BytePos(0)];
+    pub fn new(source_content: String) -> SourceFile {
+        let mut start_of_line_positions = vec![BytePos(0)];
 
-        for (i, b) in src.bytes().enumerate() {
+        for (i, b) in source_content.bytes().enumerate() {
             if b == b'\n' {
-                lines.push(BytePos(i + 1));
+                start_of_line_positions.push(BytePos(i + 1));
             }
         }
 
-        lines.push(BytePos(src.len()));
+        start_of_line_positions.push(BytePos(source_content.len()));
 
         SourceFile {
-            src: Rc::new(src),
-            name,
-            lines,
+            src: Rc::new(source_content),
+            start_of_line_positions,
         }
     }
 
@@ -106,7 +105,7 @@ impl SourceFile {
     /// Returns the line number for a `BytePos` if such is valid.
     pub fn lookup_line_index(&self, pos: BytePos) -> Option<usize> {
         let pos_index = pos.to_usize();
-        for (i, line_pos) in self.lines.iter().enumerate() {
+        for (i, line_pos) in self.start_of_line_positions.iter().enumerate() {
             let line_pos_index = line_pos.to_usize();
             if pos_index < line_pos_index {
                 return Some(i - 1);
@@ -121,7 +120,7 @@ impl SourceFile {
     pub fn lookup_source_location(&self, pos: BytePos) -> Option<Loc> {
         self.lookup_line_index(pos).map(|line_index| {
             let line = line_index + 1;
-            let col = pos - self.lines[line_index];
+            let col = pos - self.start_of_line_positions[line_index];
 
             Loc { line, col }
         })
@@ -130,23 +129,32 @@ impl SourceFile {
 
 #[cfg(test)]
 mod tests {
-    use super::{BytePos, Loc, SourceFile, Span};
+    use super::{BytePos, Loc, SourceFile, Span, DUMMY_BYTEPOS, DUMMY_SPAN};
 
     fn create_source_file() -> SourceFile {
-        SourceFile::new(
-            "test".into(),
-            "first line.\nsecond line.\nthird line.\n".into(),
-        )
+        SourceFile::new("first line.\nsecond line.\nthird line.\n".into())
+    }
+
+    #[test]
+    fn dummy_byte_positions() {
+        assert_eq!(DUMMY_BYTEPOS, BytePos(0));
+        assert_eq!(
+            DUMMY_SPAN,
+            Span {
+                start: DUMMY_BYTEPOS,
+                end: DUMMY_BYTEPOS
+            }
+        );
     }
 
     #[test]
     fn calc_line_positions_test() {
         let source_file = create_source_file();
 
-        assert_eq!(BytePos(0), source_file.lines[0]);
-        assert_eq!(BytePos(12), source_file.lines[1]);
-        assert_eq!(BytePos(25), source_file.lines[2]);
-        assert_eq!(BytePos(37), source_file.lines[3]);
+        assert_eq!(BytePos(0), source_file.start_of_line_positions[0]);
+        assert_eq!(BytePos(12), source_file.start_of_line_positions[1]);
+        assert_eq!(BytePos(25), source_file.start_of_line_positions[2]);
+        assert_eq!(BytePos(37), source_file.start_of_line_positions[3]);
     }
 
     #[test]
