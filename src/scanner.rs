@@ -91,17 +91,40 @@ impl CSubScanner<'_> {
             char_stream: CharBumper::new(chars),
         }
     }
+
+    fn peek_is(&mut self, expected_char: char) -> bool {
+        self.char_stream.peek_is(expected_char)
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        self.char_stream.bump()
+    }
 }
 
 impl Scanner for CSubScanner<'_> {
     fn scan_next_word(&mut self) -> Option<Word> {
-        Some(Word {
-            category: Category::Plus,
-            lexeme: Span {
-                start: Pos::from_usize(0),
-                end: Pos::from_usize(1),
-            },
-        })
+        let category = match self.bump() {
+            Some('+') => Category::Plus,
+            Some('-') => Category::Minus,
+            Some('*') => Category::Star,
+            Some('/') => Category::Slash,
+            Some('<') => {
+                if self.peek_is('=') {
+                    self.bump();
+                    Category::LessEqual
+                } else {
+                    Category::Less
+                }
+            }
+            _ => return None,
+        };
+
+        let lexeme = Span {
+            start: Pos::from_usize(0),
+            end: self.char_stream.cur_peek_pos,
+        };
+
+        Some(Word { category, lexeme })
     }
 }
 
@@ -172,5 +195,55 @@ mod tests {
 
         assert_eq!(plus_word.category, Category::Plus);
         assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_minus_token() {
+        let mut scanner = CSubScanner::with_chars("-".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Minus);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_star_token() {
+        let mut scanner = CSubScanner::with_chars("*".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Star);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_slash_token() {
+        let mut scanner = CSubScanner::with_chars("/".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Slash);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_less_token() {
+        let mut scanner = CSubScanner::with_chars("<".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Less);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_less_equal_token() {
+        let mut scanner = CSubScanner::with_chars("<=".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::LessEqual);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 2));
     }
 }
