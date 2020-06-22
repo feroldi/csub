@@ -4,6 +4,7 @@ use std::{iter::Peekable, str::Chars};
 
 use crate::source_map::{BytePos, Pos, Span};
 
+#[derive(Debug, PartialEq)]
 pub enum Category {
     Kw(Keyword),
     Plus,
@@ -30,6 +31,7 @@ pub enum Category {
     Eof,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Keyword {
     Else,
     If,
@@ -48,14 +50,14 @@ pub trait Scanner {
     fn scan_next_word(&mut self) -> Option<Word>;
 }
 
-struct CSubsetScanner<'chars> {
+struct CharBumper<'chars> {
     char_stream: Peekable<Chars<'chars>>,
     cur_peek_pos: BytePos,
 }
 
-impl<'chars> CSubsetScanner<'chars> {
-    fn new(chars: Chars<'chars>) -> CSubsetScanner<'chars> {
-        CSubsetScanner {
+impl<'chars> CharBumper<'chars> {
+    fn new(chars: Chars<'chars>) -> CharBumper<'chars> {
+        CharBumper {
             char_stream: chars.peekable(),
             cur_peek_pos: BytePos(0),
         }
@@ -79,62 +81,96 @@ impl<'chars> CSubsetScanner<'chars> {
     }
 }
 
+struct CSubScanner<'chars> {
+    char_stream: CharBumper<'chars>,
+}
+
+impl CSubScanner<'_> {
+    fn with_chars(chars: Chars<'_>) -> CSubScanner<'_> {
+        CSubScanner {
+            char_stream: CharBumper::new(chars),
+        }
+    }
+}
+
+impl Scanner for CSubScanner<'_> {
+    fn scan_next_word(&mut self) -> Option<Word> {
+        Some(Word {
+            category: Category::Plus,
+            lexeme: Span {
+                start: Pos::from_usize(0),
+                end: Pos::from_usize(1),
+            },
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::CSubsetScanner;
-    use crate::source_map::Pos;
+    use super::{CSubScanner, Category, CharBumper, Scanner};
+    use crate::source_map::{Pos, Span};
 
     #[test]
     fn peek_empty_input() {
-        let mut scanner = CSubsetScanner::new("".chars());
-        assert_eq!(scanner.peek(), None);
+        let mut bumper = CharBumper::new("".chars());
+        assert_eq!(bumper.peek(), None);
     }
 
     #[test]
     fn peek_something() {
-        let mut scanner = CSubsetScanner::new("abc".chars());
-        assert_eq!(scanner.peek(), Some('a'));
+        let mut bumper = CharBumper::new("abc".chars());
+        assert_eq!(bumper.peek(), Some('a'));
     }
 
     #[test]
     fn bumping_something_advances_peek() {
-        let mut scanner = CSubsetScanner::new("abc".chars());
+        let mut bumper = CharBumper::new("abc".chars());
 
-        assert_eq!(scanner.bump(), Some('a'));
-        assert_eq!(scanner.peek(), Some('b'));
+        assert_eq!(bumper.bump(), Some('a'));
+        assert_eq!(bumper.peek(), Some('b'));
 
-        assert_eq!(scanner.bump(), Some('b'));
-        assert_eq!(scanner.peek(), Some('c'));
+        assert_eq!(bumper.bump(), Some('b'));
+        assert_eq!(bumper.peek(), Some('c'));
 
-        assert_eq!(scanner.bump(), Some('c'));
-        assert_eq!(scanner.peek(), None);
+        assert_eq!(bumper.bump(), Some('c'));
+        assert_eq!(bumper.peek(), None);
 
-        assert_eq!(scanner.bump(), None);
-        assert_eq!(scanner.peek(), None);
+        assert_eq!(bumper.bump(), None);
+        assert_eq!(bumper.peek(), None);
     }
 
     #[test]
     fn peeking_doesnt_change_cur_peek_position() {
-        let mut scanner = CSubsetScanner::new("abc".chars());
+        let mut bumper = CharBumper::new("abc".chars());
 
-        assert_eq!(scanner.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
 
-        scanner.peek();
+        bumper.peek();
 
-        assert_eq!(scanner.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
     }
 
     #[test]
     fn bumping_changes_cur_peek_position() {
-        let mut scanner = CSubsetScanner::new("abc".chars());
+        let mut bumper = CharBumper::new("abc".chars());
 
-        assert_eq!(scanner.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
 
-        let previous_char = scanner.bump().unwrap();
+        let previous_char = bumper.bump().unwrap();
 
         assert_eq!(
-            scanner.cur_peek_pos,
+            bumper.cur_peek_pos,
             Pos::from_usize(previous_char.len_utf8())
         );
+    }
+
+    #[test]
+    fn scan_plus_token() {
+        let mut scanner = CSubScanner::with_chars("+".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Plus);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
     }
 }

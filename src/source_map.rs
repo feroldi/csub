@@ -17,6 +17,15 @@ pub struct Span {
     pub end: BytePos,
 }
 
+impl Span {
+    pub(crate) fn with_usizes(start: usize, end: usize) -> Span {
+        Span {
+            start: Pos::from_usize(start),
+            end: Pos::from_usize(end),
+        }
+    }
+}
+
 /// Conversion from offsets (e.g. `BytePos`) to arithmetic values and
 /// vice-versa.
 pub trait Pos {
@@ -129,7 +138,7 @@ impl SourceFile {
 
 #[cfg(test)]
 mod tests {
-    use super::{BytePos, Loc, SourceFile, Span, DUMMY_BYTEPOS, DUMMY_SPAN};
+    use super::{BytePos, Loc, Pos, SourceFile, Span, DUMMY_BYTEPOS, DUMMY_SPAN};
 
     fn create_source_file() -> SourceFile {
         SourceFile::new("first line.\nsecond line.\nthird line.\n".into())
@@ -222,5 +231,13 @@ mod tests {
         );
 
         assert_eq!(None, source_file.lookup_source_location(BytePos(37)));
+    }
+
+    #[test]
+    fn span_from_usizes() {
+        let span = Span::with_usizes(0, 42);
+
+        assert_eq!(span.start, Pos::from_usize(0));
+        assert_eq!(span.end, Pos::from_usize(42));
     }
 }
