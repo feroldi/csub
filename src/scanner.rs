@@ -18,7 +18,7 @@ pub enum Category {
     EqualEqual,
     ExclamaEqual,
     Equal,
-    Semi,
+    Semicolon,
     Comma,
     OpenParen,
     CloseParen,
@@ -127,6 +127,14 @@ impl Scanner for CSubScanner<'_> {
                 self.bump();
                 Category::ExclamaEqual
             }
+            Some(';') => Category::Semicolon,
+            Some(',') => Category::Comma,
+            Some('(') => Category::OpenParen,
+            Some(')') => Category::CloseParen,
+            Some('[') => Category::OpenCurly,
+            Some(']') => Category::CloseCurly,
+            Some('{') => Category::OpenBracket,
+            Some('}') => Category::CloseBracket,
             _ => return None,
         };
 
@@ -305,6 +313,86 @@ mod tests {
         let plus_word = scanner.scan_next_word().unwrap();
 
         assert_eq!(plus_word.category, Category::Equal);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_semicolon_token() {
+        let mut scanner = CSubScanner::with_chars(";".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Semicolon);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_comma_token() {
+        let mut scanner = CSubScanner::with_chars(",".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Comma);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_open_paren_token() {
+        let mut scanner = CSubScanner::with_chars("(".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::OpenParen);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_close_paren_token() {
+        let mut scanner = CSubScanner::with_chars(")".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::CloseParen);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_open_curly_token() {
+        let mut scanner = CSubScanner::with_chars("[".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::OpenCurly);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_close_curly_token() {
+        let mut scanner = CSubScanner::with_chars("]".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::CloseCurly);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_open_bracket_token() {
+        let mut scanner = CSubScanner::with_chars("{".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::OpenBracket);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_close_bracket_token() {
+        let mut scanner = CSubScanner::with_chars("}".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::CloseBracket);
         assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
     }
 }
