@@ -108,13 +108,24 @@ impl Scanner for CSubScanner<'_> {
             Some('-') => Category::Minus,
             Some('*') => Category::Star,
             Some('/') => Category::Slash,
-            Some('<') => {
-                if self.peek_is('=') {
-                    self.bump();
-                    Category::LessEqual
-                } else {
-                    Category::Less
-                }
+            Some('<') if self.peek_is('=') => {
+                self.bump();
+                Category::LessEqual
+            }
+            Some('<') => Category::Less,
+            Some('>') if self.peek_is('=') => {
+                self.bump();
+                Category::GreaterEqual
+            }
+            Some('>') => Category::Greater,
+            Some('=') if self.peek_is('=') => {
+                self.bump();
+                Category::EqualEqual
+            }
+            Some('=') => Category::Equal,
+            Some('!') if self.peek_is('=') => {
+                self.bump();
+                Category::ExclamaEqual
             }
             _ => return None,
         };
@@ -245,5 +256,55 @@ mod tests {
 
         assert_eq!(plus_word.category, Category::LessEqual);
         assert_eq!(plus_word.lexeme, Span::with_usizes(0, 2));
+    }
+
+    #[test]
+    fn scan_greater_token() {
+        let mut scanner = CSubScanner::with_chars(">".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Greater);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
+    }
+
+    #[test]
+    fn scan_greater_equal_token() {
+        let mut scanner = CSubScanner::with_chars(">=".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::GreaterEqual);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 2));
+    }
+
+    #[test]
+    fn scan_equal_equal_token() {
+        let mut scanner = CSubScanner::with_chars("==".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::EqualEqual);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 2));
+    }
+
+    #[test]
+    fn scan_exclama_equal_token() {
+        let mut scanner = CSubScanner::with_chars("!=".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::ExclamaEqual);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 2));
+    }
+
+    #[test]
+    fn scan_equal_token() {
+        let mut scanner = CSubScanner::with_chars("=".chars());
+
+        let plus_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(plus_word.category, Category::Equal);
+        assert_eq!(plus_word.lexeme, Span::with_usizes(0, 1));
     }
 }
