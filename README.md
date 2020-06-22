@@ -1,5 +1,16 @@
-# MATA61: Projedor do Compilador UFBA
+# Csub: UFBA Compiler Project (MATA61)
 
-Projeto do compilador MATA61 Compiladores da UFBA: https://sites.google.com/view/mata61ufba/projeto-do-compilador
+Reference: https://sites.google.com/view/mata61ufba/projeto-do-compilador
 
+## Tests
 
+Running all unit tests:
+
+```bash
+cargo test
+```
+
+## License
+
+This project is licensed under the MIT License.
+See LICENSE.
