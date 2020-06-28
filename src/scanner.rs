@@ -28,7 +28,6 @@ pub enum Category {
     CloseBracket,
     Ident,  // letter (letter | digit)*
     Number, // digit digit*
-    Eof,
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,6 +40,7 @@ pub enum Keyword {
     While,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Word {
     pub category: Category,
     pub lexeme: Span,
@@ -81,6 +81,12 @@ impl<'chars> CharBumper<'chars> {
     }
 }
 
+enum ScanResult {
+    Skipped,
+    FoundCategory(Category),
+    ReachedEndOfInput,
+}
+
 struct CSubScanner<'chars> {
     char_stream: CharBumper<'chars>,
 }
@@ -99,14 +105,36 @@ impl CSubScanner<'_> {
     fn bump(&mut self) -> Option<char> {
         self.char_stream.bump()
     }
-}
 
-impl Scanner for CSubScanner<'_> {
     fn scan_next_word(&mut self) -> Option<Word> {
+        let scan_result = self.analyse_and_bump_chars();
+
+        match scan_result {
+            ScanResult::FoundCategory(category) => {
+                let lexeme = Span {
+                    start: Pos::from_usize(0),
+                    end: self.char_stream.cur_peek_pos,
+                };
+
+                Some(Word { category, lexeme })
+            }
+            ScanResult::Skipped => self.scan_next_word(),
+            ScanResult::ReachedEndOfInput => None,
+        }
+    }
+
+    fn analyse_and_bump_chars(&mut self) -> ScanResult {
+        use ScanResult::*;
+
         let category = match self.bump() {
             Some('+') => Category::Plus,
             Some('-') => Category::Minus,
             Some('*') => Category::Star,
+            Some('/') if self.peek_is('*') => {
+                self.bump();
+                self.skip_comment_block();
+                return Skipped;
+            }
             Some('/') => Category::Slash,
             Some('<') if self.peek_is('=') => {
                 self.bump();
@@ -135,21 +163,39 @@ impl Scanner for CSubScanner<'_> {
             Some(']') => Category::CloseCurly,
             Some('{') => Category::OpenBracket,
             Some('}') => Category::CloseBracket,
-            _ => return None,
+            _ => return ReachedEndOfInput,
         };
 
-        let lexeme = Span {
-            start: Pos::from_usize(0),
-            end: self.char_stream.cur_peek_pos,
-        };
+        FoundCategory(category)
+    }
 
-        Some(Word { category, lexeme })
+    fn skip_comment_block(&mut self) {
+        loop {
+            match self.bump() {
+                Some('*') if self.peek_is('/') => {
+                    self.bump();
+                    break;
+                }
+                None => {
+                    unimplemented!("diagnose missing end of comment-block!")
+                }
+                _ => {}
+            }
+        }
+
+        assert_ne!(self.char_stream.peek(), Some('/'));
+    }
+}
+
+impl Scanner for CSubScanner<'_> {
+    fn scan_next_word(&mut self) -> Option<Word> {
+        self.scan_next_word()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CSubScanner, Category, CharBumper, Scanner};
+    use super::{CSubScanner, Category, CharBumper};
     use crate::source_map::{Pos, Span};
 
     #[test]
@@ -209,10 +255,10 @@ mod tests {
     fn assert_symbol(input: &str, category: Category, length: usize) {
         let mut scanner = CSubScanner::with_chars(input.chars());
 
-        let plus_word = scanner.scan_next_word().unwrap();
+        let word = scanner.scan_next_word().unwrap();
 
-        assert_eq!(plus_word.category, category);
-        assert_eq!(plus_word.lexeme, Span::with_usizes(0, length));
+        assert_eq!(word.category, category);
+        assert_eq!(word.lexeme, Span::with_usizes(0, length));
     }
 
     #[test]
@@ -308,5 +354,42 @@ mod tests {
     #[test]
     fn scan_close_bracket_token() {
         assert_symbol("}", Category::CloseBracket, 1);
+    }
+
+    #[test]
+    fn scan_comment_block() {
+        let mut scanner = CSubScanner::with_chars("/**/".chars());
+
+        let next_word = scanner.scan_next_word();
+
+        assert_eq!(next_word, None);
+    }
+
+    #[test]
+    fn skip_everything_inside_comment_blocks() {
+        let mut scanner = CSubScanner::with_chars(
+            "/* this is a ++comment++!\nwith new lines!\n */".chars(),
+        );
+
+        let next_word = scanner.scan_next_word();
+
+        assert_eq!(next_word, None);
+    }
+
+    #[test]
+    fn dont_nest_comment_blocks() {
+        let mut scanner = CSubScanner::with_chars("/*+/*-*/=*/".chars());
+
+        let equal_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(equal_word.category, Category::Equal);
+
+        let star_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(star_word.category, Category::Star);
+
+        let slash_word = scanner.scan_next_word().unwrap();
+
+        assert_eq!(slash_word.category, Category::Slash);
     }
 }
