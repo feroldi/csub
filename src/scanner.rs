@@ -52,14 +52,14 @@ pub trait Scanner {
 
 struct CharBumper<'chars> {
     char_stream: Peekable<Chars<'chars>>,
-    cur_peek_pos: BytePos,
+    current_peek_pos: BytePos,
 }
 
 impl<'chars> CharBumper<'chars> {
     fn new(chars: Chars<'chars>) -> CharBumper<'chars> {
         CharBumper {
             char_stream: chars.peekable(),
-            cur_peek_pos: BytePos(0),
+            current_peek_pos: BytePos(0),
         }
     }
 
@@ -75,7 +75,8 @@ impl<'chars> CharBumper<'chars> {
         let next_char = self.char_stream.next();
         next_char.and_then(|c| {
             let byte_length_in_utf8 = Pos::from_usize(c.len_utf8());
-            self.cur_peek_pos = self.cur_peek_pos + byte_length_in_utf8;
+            self.current_peek_pos =
+                self.current_peek_pos + byte_length_in_utf8;
             Some(c)
         })
     }
@@ -85,6 +86,7 @@ enum ScanResult {
     Skipped,
     FoundCategory(Category),
     ReachedEndOfInput,
+    Error,
 }
 
 struct CSubScanner<'chars> {
@@ -113,13 +115,14 @@ impl CSubScanner<'_> {
             ScanResult::FoundCategory(category) => {
                 let lexeme = Span {
                     start: Pos::from_usize(0),
-                    end: self.char_stream.cur_peek_pos,
+                    end: self.char_stream.current_peek_pos,
                 };
 
                 Some(Word { category, lexeme })
             }
             ScanResult::Skipped => self.scan_next_word(),
             ScanResult::ReachedEndOfInput => None,
+            ScanResult::Error => unimplemented!("diagnose errors!"),
         }
     }
 
@@ -132,7 +135,7 @@ impl CSubScanner<'_> {
             Some('*') => Category::Star,
             Some('/') if self.peek_is('*') => {
                 self.bump();
-                self.skip_comment_block();
+                self.skip_block_comment();
                 return Skipped;
             }
             Some('/') => Category::Slash,
@@ -163,13 +166,14 @@ impl CSubScanner<'_> {
             Some(']') => Category::CloseCurly,
             Some('{') => Category::OpenBracket,
             Some('}') => Category::CloseBracket,
-            _ => return ReachedEndOfInput,
+            None => return ReachedEndOfInput,
+            _ => return Error,
         };
 
         FoundCategory(category)
     }
 
-    fn skip_comment_block(&mut self) {
+    fn skip_block_comment(&mut self) {
         loop {
             match self.bump() {
                 Some('*') if self.peek_is('/') => {
@@ -177,13 +181,11 @@ impl CSubScanner<'_> {
                     break;
                 }
                 None => {
-                    unimplemented!("diagnose missing end of comment-block!")
+                    unimplemented!("diagnose missing end of block-comment!")
                 }
                 _ => {}
             }
         }
-
-        assert_ne!(self.char_stream.peek(), Some('/'));
     }
 }
 
@@ -228,26 +230,26 @@ mod tests {
     }
 
     #[test]
-    fn peeking_doesnt_change_cur_peek_position() {
+    fn peeking_doesnt_change_current_peek_position() {
         let mut bumper = CharBumper::new("abc".chars());
 
-        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(0));
 
         bumper.peek();
 
-        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(0));
     }
 
     #[test]
-    fn bumping_changes_cur_peek_position() {
+    fn bumping_changes_current_peek_position() {
         let mut bumper = CharBumper::new("abc".chars());
 
-        assert_eq!(bumper.cur_peek_pos, Pos::from_usize(0));
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(0));
 
         let previous_char = bumper.bump().unwrap();
 
         assert_eq!(
-            bumper.cur_peek_pos,
+            bumper.current_peek_pos,
             Pos::from_usize(previous_char.len_utf8())
         );
     }
@@ -359,9 +361,7 @@ mod tests {
     #[test]
     fn scan_comment_block() {
         let mut scanner = CSubScanner::with_chars("/**/".chars());
-
         let next_word = scanner.scan_next_word();
-
         assert_eq!(next_word, None);
     }
 
@@ -381,15 +381,19 @@ mod tests {
         let mut scanner = CSubScanner::with_chars("/*+/*-*/=*/".chars());
 
         let equal_word = scanner.scan_next_word().unwrap();
-
         assert_eq!(equal_word.category, Category::Equal);
 
         let star_word = scanner.scan_next_word().unwrap();
-
         assert_eq!(star_word.category, Category::Star);
 
         let slash_word = scanner.scan_next_word().unwrap();
-
         assert_eq!(slash_word.category, Category::Slash);
+    }
+
+    #[test]
+    #[should_panic]
+    fn missing_end_of_block_comment() {
+        let mut scanner = CSubScanner::with_chars("/*".chars());
+        let _ = scanner.scan_next_word();
     }
 }
