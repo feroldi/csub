@@ -26,8 +26,8 @@ pub enum Category {
     CloseCurly,
     OpenBracket,
     CloseBracket,
-    Ident,  // letter (letter | digit)*
-    Number, // digit digit*
+    Ident,
+    Number,
 }
 
 #[derive(Debug, PartialEq)]
@@ -75,10 +75,18 @@ impl<'chars> CharBumper<'chars> {
         let next_char = self.char_stream.next();
         next_char.and_then(|c| {
             let byte_length_in_utf8 = Pos::from_usize(c.len_utf8());
-            self.current_peek_pos =
-                self.current_peek_pos + byte_length_in_utf8;
+            self.current_peek_pos = self.current_peek_pos + byte_length_in_utf8;
             Some(c)
         })
+    }
+
+    fn bump_if(&mut self, ch: char) -> bool {
+        if self.peek_is(ch) {
+            self.bump();
+            return true;
+        } else {
+            return false;
+        }
     }
 }
 
@@ -108,11 +116,15 @@ impl CSubScanner<'_> {
         self.char_stream.bump()
     }
 
-    fn scan_next_word(&mut self) -> Option<Word> {
-        let scan_result = self.analyse_and_bump_chars();
+    fn bump_if(&mut self, expected_char: char) -> bool {
+        self.char_stream.bump_if(expected_char)
+    }
 
+    fn scan_next_word(&mut self) -> Option<Word> {
+        use ScanResult::*;
+        let scan_result = self.analyse_category_and_bump_chars();
         match scan_result {
-            ScanResult::FoundCategory(category) => {
+            FoundCategory(category) => {
                 let lexeme = Span {
                     start: Pos::from_usize(0),
                     end: self.char_stream.current_peek_pos,
@@ -120,44 +132,30 @@ impl CSubScanner<'_> {
 
                 Some(Word { category, lexeme })
             }
-            ScanResult::Skipped => self.scan_next_word(),
-            ScanResult::ReachedEndOfInput => None,
-            ScanResult::Error => unimplemented!("diagnose errors!"),
+            Skipped => self.scan_next_word(),
+            ReachedEndOfInput => None,
+            Error => unimplemented!("diagnose errors!"),
         }
     }
 
-    fn analyse_and_bump_chars(&mut self) -> ScanResult {
+    fn analyse_category_and_bump_chars(&mut self) -> ScanResult {
         use ScanResult::*;
-
         let category = match self.bump() {
             Some('+') => Category::Plus,
             Some('-') => Category::Minus,
             Some('*') => Category::Star,
-            Some('/') if self.peek_is('*') => {
-                self.bump();
+            Some('/') if self.bump_if('*') => {
                 self.skip_block_comment();
                 return Skipped;
             }
             Some('/') => Category::Slash,
-            Some('<') if self.peek_is('=') => {
-                self.bump();
-                Category::LessEqual
-            }
+            Some('<') if self.bump_if('=') => Category::LessEqual,
             Some('<') => Category::Less,
-            Some('>') if self.peek_is('=') => {
-                self.bump();
-                Category::GreaterEqual
-            }
+            Some('>') if self.bump_if('=') => Category::GreaterEqual,
             Some('>') => Category::Greater,
-            Some('=') if self.peek_is('=') => {
-                self.bump();
-                Category::EqualEqual
-            }
+            Some('=') if self.bump_if('=') => Category::EqualEqual,
             Some('=') => Category::Equal,
-            Some('!') if self.peek_is('=') => {
-                self.bump();
-                Category::ExclamaEqual
-            }
+            Some('!') if self.bump_if('=') => Category::ExclamaEqual,
             Some(';') => Category::Semicolon,
             Some(',') => Category::Comma,
             Some('(') => Category::OpenParen,
@@ -252,6 +250,24 @@ mod tests {
             bumper.current_peek_pos,
             Pos::from_usize(previous_char.len_utf8())
         );
+    }
+
+    #[test]
+    fn bumps_only_if_peek_is_expected_char() {
+        let mut bumper = CharBumper::new("abc".chars());
+
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(0));
+        assert!(bumper.peek_is('a'));
+
+        // Bumps if expected char equals peek.
+        assert_eq!(bumper.bump_if('a'), true);
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(1));
+        assert!(bumper.peek_is('b'));
+
+        // Doesn't bump if expected char doesn't equal peek.
+        assert_eq!(bumper.bump_if('!'), false);
+        assert_eq!(bumper.current_peek_pos, Pos::from_usize(1));
+        assert!(bumper.peek_is('b'));
     }
 
     fn assert_symbol(input: &str, category: Category, length: usize) {
