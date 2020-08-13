@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::errors::{Diag, DiagBag};
 use std::{iter::Peekable, str::Chars};
 
 use crate::source_map::{BytePos, Pos, Span};
@@ -28,6 +29,7 @@ pub enum Category {
     CloseBracket,
     Ident,
     Number,
+    Eof,
 }
 
 #[derive(Debug, PartialEq)]
@@ -46,8 +48,17 @@ pub struct Word {
     pub lexeme: Span,
 }
 
-pub trait Scanner {
-    fn scan_next_word(&mut self) -> Option<Word>;
+impl Word {
+    fn end_of_input() -> Word {
+        Word {
+            category: Category::Eof,
+            lexeme: Span::DUMMY,
+        }
+    }
+}
+
+pub(crate) trait Scanner {
+    fn scan_next_word(&mut self) -> Result<Word, DiagBag>;
 }
 
 struct CharBumper<'chars> {
@@ -90,11 +101,12 @@ impl<'chars> CharBumper<'chars> {
     }
 }
 
-enum ScanResult {
+type ScanResult = Result<ScanState, Diag>;
+
+enum ScanState {
     Skipped,
     FoundCategory(Category),
     ReachedEndOfInput,
-    Error,
 }
 
 struct CSubScanner<'chars> {
@@ -120,33 +132,31 @@ impl CSubScanner<'_> {
         self.char_stream.bump_if(expected_char)
     }
 
-    fn scan_next_word(&mut self) -> Option<Word> {
-        use ScanResult::*;
-        let scan_result = self.analyse_category_and_bump_chars();
-        match scan_result {
-            FoundCategory(category) => {
+    fn scan_next_word(&mut self) -> Result<Word, DiagBag> {
+        let scan_state = self.analyse_category_and_bump_chars();
+        match scan_state {
+            Ok(ScanState::FoundCategory(category)) => {
                 let lexeme = Span {
                     start: Pos::from_usize(0),
                     end: self.char_stream.current_peek_pos,
                 };
 
-                Some(Word { category, lexeme })
+                Ok(Word { category, lexeme })
             }
-            Skipped => self.scan_next_word(),
-            ReachedEndOfInput => None,
-            Error => unimplemented!("diagnose errors!"),
+            Ok(ScanState::Skipped) => self.scan_next_word(),
+            Ok(ScanState::ReachedEndOfInput) => Ok(Word::end_of_input()),
+            Err(_) => unimplemented!("diagnose errors!"),
         }
     }
 
     fn analyse_category_and_bump_chars(&mut self) -> ScanResult {
-        use ScanResult::*;
         let category = match self.bump() {
             Some('+') => Category::Plus,
             Some('-') => Category::Minus,
             Some('*') => Category::Star,
             Some('/') if self.bump_if('*') => {
                 self.skip_block_comment();
-                return Skipped;
+                return Ok(ScanState::Skipped);
             }
             Some('/') => Category::Slash,
             Some('<') if self.bump_if('=') => Category::LessEqual,
@@ -164,11 +174,16 @@ impl CSubScanner<'_> {
             Some(']') => Category::CloseCurly,
             Some('{') => Category::OpenBracket,
             Some('}') => Category::CloseBracket,
-            None => return ReachedEndOfInput,
-            _ => return Error,
+            None => return Ok(ScanState::ReachedEndOfInput),
+            _ => {
+                // TODO(feroldi): Not tested.
+                return Err(Diag::UnknownCharacter {
+                    pos: self.char_stream.current_peek_pos,
+                });
+            }
         };
 
-        FoundCategory(category)
+        Ok(ScanState::FoundCategory(category))
     }
 
     fn skip_block_comment(&mut self) {
@@ -188,7 +203,7 @@ impl CSubScanner<'_> {
 }
 
 impl Scanner for CSubScanner<'_> {
-    fn scan_next_word(&mut self) -> Option<Word> {
+    fn scan_next_word(&mut self) -> Result<Word, DiagBag> {
         self.scan_next_word()
     }
 }
@@ -196,7 +211,10 @@ impl Scanner for CSubScanner<'_> {
 #[cfg(test)]
 mod tests {
     use super::{CSubScanner, Category, CharBumper};
-    use crate::source_map::{Pos, Span};
+    use crate::{
+        scanner::Word,
+        source_map::{Pos, Span},
+    };
 
     #[test]
     fn peek_empty_input() {
@@ -377,8 +395,8 @@ mod tests {
     #[test]
     fn scan_comment_block() {
         let mut scanner = CSubScanner::with_chars("/**/".chars());
-        let next_word = scanner.scan_next_word();
-        assert_eq!(next_word, None);
+        let next_word = scanner.scan_next_word().unwrap();
+        assert_eq!(next_word, Word::end_of_input());
     }
 
     #[test]
@@ -387,9 +405,9 @@ mod tests {
             "/* this is a ++comment++!\nwith new lines!\n */".chars(),
         );
 
-        let next_word = scanner.scan_next_word();
+        let next_word = scanner.scan_next_word().unwrap();
 
-        assert_eq!(next_word, None);
+        assert_eq!(next_word, Word::end_of_input());
     }
 
     #[test]

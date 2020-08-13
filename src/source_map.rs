@@ -9,6 +9,10 @@ use std::{
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct BytePos(pub usize);
 
+impl BytePos {
+    pub(crate) const DUMMY: BytePos = BytePos(0);
+}
+
 /// A range (span) into a source file's text buffer, indicating a region of
 /// text.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -18,6 +22,11 @@ pub struct Span {
 }
 
 impl Span {
+    pub(crate) const DUMMY: Span = Span {
+        start: BytePos::DUMMY,
+        end: BytePos::DUMMY,
+    };
+
     pub(crate) fn with_usizes(start: usize, end: usize) -> Span {
         Span {
             start: Pos::from_usize(start),
@@ -32,12 +41,6 @@ pub trait Pos {
     fn from_usize(value: usize) -> Self;
     fn to_usize(&self) -> usize;
 }
-
-pub const DUMMY_BYTEPOS: BytePos = BytePos(0);
-pub const DUMMY_SPAN: Span = Span {
-    start: DUMMY_BYTEPOS,
-    end: DUMMY_BYTEPOS,
-};
 
 impl Pos for BytePos {
     fn from_usize(value: usize) -> BytePos {
@@ -138,7 +141,7 @@ impl SourceFile {
 
 #[cfg(test)]
 mod tests {
-    use super::{BytePos, Loc, Pos, SourceFile, Span, DUMMY_BYTEPOS, DUMMY_SPAN};
+    use super::{BytePos, Loc, Pos, SourceFile, Span};
 
     fn create_source_file() -> SourceFile {
         SourceFile::new("first line.\nsecond line.\nthird line.\n".into())
@@ -146,12 +149,12 @@ mod tests {
 
     #[test]
     fn dummy_byte_positions() {
-        assert_eq!(DUMMY_BYTEPOS, BytePos(0));
+        assert_eq!(BytePos::DUMMY, BytePos(0));
         assert_eq!(
-            DUMMY_SPAN,
+            Span::DUMMY,
             Span {
-                start: DUMMY_BYTEPOS,
-                end: DUMMY_BYTEPOS
+                start: BytePos::DUMMY,
+                end: BytePos::DUMMY,
             }
         );
     }
