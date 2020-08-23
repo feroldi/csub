@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn scan_ident_letters_and_digits_mixed_token() {
-        let input_string = "h3ll0w0r1d";
+        let input_string = "H3ll0W0r1d";
         assert_symbol(&input_string, Category::Ident, input_string.len());
     }
 
