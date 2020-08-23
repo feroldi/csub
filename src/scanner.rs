@@ -438,11 +438,11 @@ mod tests {
         let ascii_start = 0u8;
         let ascii_end = 127u8;
         let chars_that_stop_ident_scanning =
-            (ascii_start..=ascii_end).filter(|i| {
+            (ascii_start..=ascii_end).filter(|ascii_char| {
                 (b'a'..=b'z')
                     .chain(b'A'..=b'Z')
                     .chain(b'0'..=b'9')
-                    .find(|ch| ch == i)
+                    .find(|ch| ch == ascii_char)
                     .is_none()
             });
 
