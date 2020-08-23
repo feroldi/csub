@@ -442,7 +442,7 @@ mod tests {
                 (b'a'..=b'z')
                     .chain(b'A'..=b'Z')
                     .chain(b'0'..=b'9')
-                    .find(|ch| ch == ascii_char)
+                    .find(|excluding_char| excluding_char == ascii_char)
                     .is_none()
             });
 
