@@ -414,6 +414,12 @@ mod tests {
     }
 
     #[test]
+    fn scan_ident_letters_and_digits_mixed_token() {
+        let input_string = "h3ll0w0r1d";
+        assert_symbol(&input_string, Category::Ident, input_string.len());
+    }
+
+    #[test]
     fn scan_ident_head_and_body_token() {
         let id_with_all_letters_and_digits = &('a'..='z')
             .chain('A'..='Z')
