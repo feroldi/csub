@@ -1,3 +1,5 @@
+#![feature(or_patterns)]
+
 pub mod scanner;
 pub mod source_map;
 pub mod errors;

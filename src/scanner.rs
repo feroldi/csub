@@ -57,10 +57,6 @@ impl Word {
     }
 }
 
-pub(crate) trait Scanner {
-    fn scan_next_word(&mut self) -> Result<Word, DiagBag>;
-}
-
 struct CharBumper<'chars> {
     char_stream: Peekable<Chars<'chars>>,
     current_peek_pos: BytePos,
@@ -120,6 +116,10 @@ impl CSubScanner<'_> {
         }
     }
 
+    fn peek(&mut self) -> Option<char> {
+        self.char_stream.peek()
+    }
+
     fn peek_is(&mut self, expected_char: char) -> bool {
         self.char_stream.peek_is(expected_char)
     }
@@ -133,11 +133,12 @@ impl CSubScanner<'_> {
     }
 
     fn scan_next_word(&mut self) -> Result<Word, DiagBag> {
+        let lexeme_start = self.char_stream.current_peek_pos;
         let scan_state = self.analyse_category_and_bump_chars();
         match scan_state {
             Ok(ScanState::FoundCategory(category)) => {
                 let lexeme = Span {
-                    start: Pos::from_usize(0),
+                    start: lexeme_start,
                     end: self.char_stream.current_peek_pos,
                 };
 
@@ -145,7 +146,7 @@ impl CSubScanner<'_> {
             }
             Ok(ScanState::Skipped) => self.scan_next_word(),
             Ok(ScanState::ReachedEndOfInput) => Ok(Word::end_of_input()),
-            Err(_) => unimplemented!("diagnose errors!"),
+            Err(_) => todo!("diagnose errors!"),
         }
     }
 
@@ -174,13 +175,13 @@ impl CSubScanner<'_> {
             Some(']') => Category::CloseCurly,
             Some('{') => Category::OpenBracket,
             Some('}') => Category::CloseBracket,
-            None => return Ok(ScanState::ReachedEndOfInput),
-            _ => {
-                // TODO(feroldi): Not tested.
-                return Err(Diag::UnknownCharacter {
-                    pos: self.char_stream.current_peek_pos,
-                });
+            Some('a'..='z' | 'A'..='Z') => {
+                self.bump_ident();
+                Category::Ident
             }
+            Some('\x20' | '\n' | '\t') => return Ok(ScanState::Skipped),
+            None => return Ok(ScanState::ReachedEndOfInput),
+            _ => todo!("Not tested"),
         };
 
         Ok(ScanState::FoundCategory(category))
@@ -193,18 +194,16 @@ impl CSubScanner<'_> {
                     self.bump();
                     break;
                 }
-                None => {
-                    unimplemented!("diagnose missing end of block-comment!")
-                }
+                None => todo!("diagnose missing end of block-comment!"),
                 _ => {}
             }
         }
     }
-}
 
-impl Scanner for CSubScanner<'_> {
-    fn scan_next_word(&mut self) -> Result<Word, DiagBag> {
-        self.scan_next_word()
+    fn bump_ident(&mut self) {
+        while let Some('a'..='z' | 'A'..='Z' | '0'..='9') = self.peek() {
+            self.bump();
+        }
     }
 }
 
@@ -295,6 +294,17 @@ mod tests {
 
         assert_eq!(word.category, category);
         assert_eq!(word.lexeme, Span::with_usizes(0, length));
+    }
+
+    #[test]
+    fn scan_next_word_advances_span_start() {
+        let mut scanner = CSubScanner::with_chars("+-".chars());
+
+        let first_word = scanner.scan_next_word().unwrap();
+        assert_eq!(first_word.lexeme, Span::with_usizes(0, 1));
+
+        let second_word = scanner.scan_next_word().unwrap();
+        assert_eq!(second_word.lexeme, Span::with_usizes(1, 2));
     }
 
     #[test]
@@ -390,6 +400,68 @@ mod tests {
     #[test]
     fn scan_close_bracket_token() {
         assert_symbol("}", Category::CloseBracket, 1);
+    }
+
+    #[test]
+    fn scan_ident_head_token() {
+        for letter in 'a'..='z' {
+            assert_symbol(&letter.to_string(), Category::Ident, 1);
+        }
+
+        for letter in 'A'..='Z' {
+            assert_symbol(&letter.to_string(), Category::Ident, 1);
+        }
+    }
+
+    #[test]
+    fn scan_ident_head_and_body_token() {
+        let id_with_all_letters_and_digits = &('a'..='z')
+            .chain('A'..='Z')
+            .chain('0'..='9')
+            .collect::<String>();
+
+        assert_symbol(
+            &id_with_all_letters_and_digits,
+            Category::Ident,
+            id_with_all_letters_and_digits.len(),
+        );
+    }
+
+    #[test]
+    fn stop_scanning_ident_after_finding_char_other_than_letter_or_digit() {
+        let tokens_that_stop_ident_scanning = [
+            '+', '-', '*', '/', '<', '>', '=', '!', ';', ',', '(', ')', '[',
+            ']', '{', '}', '\x20', '\n', '\t',
+        ];
+
+        for char_that_stops_ident_scanning in &tokens_that_stop_ident_scanning {
+            let input_string =
+                format!("hello{}", char_that_stops_ident_scanning);
+
+            let mut scanner = CSubScanner::with_chars(input_string.chars());
+
+            let ident_word = scanner.scan_next_word().unwrap();
+            assert_eq!(
+                ident_word,
+                Word {
+                    category: Category::Ident,
+                    lexeme: Span::with_usizes(0, 5)
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn skip_whitespace_chars() {
+        let space = '\x20';
+        let newline = '\x0A';
+        let tab = '\x09';
+        let whitespaces = &[space, newline, tab].iter().collect::<String>();
+
+        let mut scanner = CSubScanner::with_chars(whitespaces.chars());
+
+        let eof_word = scanner.scan_next_word().unwrap();
+        assert_eq!(eof_word, Word::end_of_input());
     }
 
     #[test]
