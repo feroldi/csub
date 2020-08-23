@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn scan_ident_head_and_body_token() {
-        let id_with_all_letters_and_digits = &('a'..='z')
+        let id_with_all_letters_and_digits = ('a'..='z')
             .chain('A'..='Z')
             .chain('0'..='9')
             .collect::<String>();
@@ -435,14 +435,20 @@ mod tests {
 
     #[test]
     fn stop_scanning_ident_after_finding_char_other_than_letter_or_digit() {
-        let tokens_that_stop_ident_scanning = [
-            '+', '-', '*', '/', '<', '>', '=', '!', ';', ',', '(', ')', '[',
-            ']', '{', '}', '\x20', '\n', '\t',
-        ];
+        let ascii_start = 0u8;
+        let ascii_end = 127u8;
+        let chars_that_stop_ident_scanning =
+            (ascii_start..=ascii_end).filter(|i| {
+                (b'a'..=b'z')
+                    .chain(b'A'..=b'Z')
+                    .chain(b'0'..=b'9')
+                    .find(|ch| ch == i)
+                    .is_none()
+            });
 
-        for char_that_stops_ident_scanning in &tokens_that_stop_ident_scanning {
+        for char_that_stops_ident_scanning in chars_that_stop_ident_scanning {
             let input_string =
-                format!("hello{}", char_that_stops_ident_scanning);
+                format!("hello{}", char_that_stops_ident_scanning as char);
 
             let mut scanner = CSubScanner::with_chars(input_string.chars());
 
@@ -452,7 +458,9 @@ mod tests {
                 Word {
                     category: Category::Ident,
                     lexeme: Span::with_usizes(0, 5)
-                }
+                },
+                "char that should stop ident scanning is {0:#X}",
+                char_that_stops_ident_scanning,
             );
         }
     }
