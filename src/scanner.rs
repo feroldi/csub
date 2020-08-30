@@ -176,7 +176,7 @@ impl CSubScanner<'_> {
             Some('{') => Category::OpenBracket,
             Some('}') => Category::CloseBracket,
             Some('a'..='z' | 'A'..='Z') => {
-                self.bump_ident();
+                self.bump_ident_body();
                 Category::Ident
             }
             Some('\x20' | '\n' | '\t') => return Ok(ScanState::Skipped),
@@ -200,7 +200,7 @@ impl CSubScanner<'_> {
         }
     }
 
-    fn bump_ident(&mut self) {
+    fn bump_ident_body(&mut self) {
         while let Some('a'..='z' | 'A'..='Z' | '0'..='9') = self.peek() {
             self.bump();
         }
