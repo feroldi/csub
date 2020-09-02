@@ -179,6 +179,10 @@ impl CSubScanner<'_> {
                 self.bump_ident_body();
                 Category::Ident
             }
+            Some('0'..='9') => {
+                self.bump_number();
+                Category::Number
+            }
             Some('\x20' | '\n' | '\t') => return Ok(ScanState::Skipped),
             None => return Ok(ScanState::ReachedEndOfInput),
             _ => todo!("Not tested"),
@@ -194,7 +198,7 @@ impl CSubScanner<'_> {
                     self.bump();
                     break;
                 }
-                None => todo!("diagnose missing end of block-comment!"),
+                None => todo!("todo_missing_termination_of_comment"),
                 _ => {}
             }
         }
@@ -203,6 +207,16 @@ impl CSubScanner<'_> {
     fn bump_ident_body(&mut self) {
         while let Some('a'..='z' | 'A'..='Z' | '0'..='9') = self.peek() {
             self.bump();
+        }
+    }
+
+    fn bump_number(&mut self) {
+        while let Some('0'..='9') = self.peek() {
+            self.bump();
+        }
+
+        if let Some('a'..='z' | 'A'..='Z') = self.peek() {
+            todo!("todo_invalid_digit_error");
         }
     }
 }
@@ -510,10 +524,36 @@ mod tests {
         assert_eq!(slash_word.category, Category::Slash);
     }
 
+    // TODO(feroldi): Test that this actually returns a diagnostic.
     #[test]
-    #[should_panic]
+    #[should_panic = "todo_missing_termination_of_comment"]
     fn missing_end_of_block_comment() {
         let mut scanner = CSubScanner::with_chars("/*".chars());
+        let _ = scanner.scan_next_word();
+    }
+
+    #[test]
+    fn scan_number_with_one_digit() {
+        for letter in '0'..='9' {
+            assert_symbol(&letter.to_string(), Category::Number, 1);
+        }
+    }
+
+    #[test]
+    fn scan_number_with_many_digits() {
+        assert_symbol("10", Category::Number, 2);
+        assert_symbol("123", Category::Number, 3);
+        assert_symbol("0102", Category::Number, 4);
+        assert_symbol("0123456789", Category::Number, 10);
+        assert_symbol("9876543210", Category::Number, 10);
+        assert_symbol("00000000000000000000000", Category::Number, 23);
+    }
+
+    // TODO(feroldi): Test that this actually returns a diagnostic.
+    #[test]
+    #[should_panic = "todo_invalid_digit_error"]
+    fn given_it_found_letter_when_scanning_number_then_diagnose_error() {
+        let mut scanner = CSubScanner::with_chars("0123a".chars());
         let _ = scanner.scan_next_word();
     }
 }
