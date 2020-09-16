@@ -3,35 +3,29 @@ use std::{
     rc::Rc,
 };
 
-/// A byte position or offset into a source file's text buffer. This is used to
-/// map ASTs to soure code by indicating the position from which an AST node
-/// was parsed.
+/// A byte position (or offset) into a source file's text buffer. This is used
+/// to map ASTs to soure code by indicating the position in a file from which
+/// an AST node was parsed.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct BytePos(pub usize);
+pub(crate) struct BytePos(pub usize);
 
 impl BytePos {
     pub(crate) const DUMMY: BytePos = BytePos(0);
 }
 
-/// A range (span) into a source file's text buffer, indicating a region of
-/// text.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Span {
-    pub start: BytePos,
-    pub end: BytePos,
+impl Add for BytePos {
+    type Output = BytePos;
+
+    fn add(self, rhs: BytePos) -> BytePos {
+        BytePos(self.0 + rhs.0)
+    }
 }
 
-impl Span {
-    pub(crate) const DUMMY: Span = Span {
-        start: BytePos::DUMMY,
-        end: BytePos::DUMMY,
-    };
+impl Sub for BytePos {
+    type Output = BytePos;
 
-    pub(crate) fn with_usizes(start: usize, end: usize) -> Span {
-        Span {
-            start: Pos::from_usize(start),
-            end: Pos::from_usize(end),
-        }
+    fn sub(self, rhs: BytePos) -> BytePos {
+        BytePos(self.0 - rhs.0)
     }
 }
 
@@ -52,27 +46,34 @@ impl Pos for BytePos {
     }
 }
 
-impl Add for BytePos {
-    type Output = BytePos;
-
-    fn add(self, rhs: BytePos) -> BytePos {
-        BytePos(self.0 + rhs.0)
-    }
+/// A range (span) into a source file's text buffer, indicating a region of
+/// text.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) struct Span {
+    pub(crate) start: BytePos,
+    pub(crate) end: BytePos,
 }
 
-impl Sub for BytePos {
-    type Output = BytePos;
+impl Span {
+    pub(crate) const DUMMY: Span = Span {
+        start: BytePos::DUMMY,
+        end: BytePos::DUMMY,
+    };
 
-    fn sub(self, rhs: BytePos) -> BytePos {
-        BytePos(self.0 - rhs.0)
+    #[cfg(test)]
+    pub(crate) fn with_usizes(start: usize, end: usize) -> Span {
+        Span {
+            start: Pos::from_usize(start),
+            end: Pos::from_usize(end),
+        }
     }
 }
 
 /// A source location containing line and column number. Useful for diagnostics.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Loc {
-    pub line: usize,
-    pub col: BytePos,
+pub(crate) struct Loc {
+    pub(crate) line: usize,
+    pub(crate) col: BytePos,
 }
 
 /// This holds information of a given source file, such as the source name,
@@ -81,43 +82,47 @@ pub struct Loc {
 /// A `SourceFile` assists in reporting errors and mapping ASTs to source code,
 /// providing an interface for text information lookup, such as: line and
 /// column number for a given position; text snippets from spans etc.
-pub struct SourceFile {
+pub(crate) struct SourceFile {
     /// File's content.
-    pub src: Rc<String>,
+    pub(crate) src: Rc<String>,
     /// Byte positions following every new line.
-    start_of_line_positions: Vec<BytePos>,
+    start_pos_of_lines: Vec<BytePos>,
 }
 
 impl SourceFile {
     /// Constructs a new `SourceFile` from a string (the text buffer).
     ///
     /// Line positions are precomputed by this function.
+    #[allow(dead_code)]
     pub fn new(source_content: String) -> SourceFile {
-        let mut start_of_line_positions = vec![BytePos(0)];
+        let mut start_pos_of_lines = vec![BytePos(0)];
 
         for (i, b) in source_content.bytes().enumerate() {
             if b == b'\n' {
-                start_of_line_positions.push(BytePos(i + 1));
+                start_pos_of_lines.push(BytePos(i + 1));
             }
         }
 
-        start_of_line_positions.push(BytePos(source_content.len()));
+        start_pos_of_lines.push(BytePos(source_content.len()));
 
         SourceFile {
             src: Rc::new(source_content),
-            start_of_line_positions,
+            start_pos_of_lines,
         }
     }
 
     /// Returns a string slice represented by a `Span`.
-    pub fn span_to_snippet(&self, s: Span) -> &str {
-        &self.src[s.start.0..s.end.0]
+    #[allow(dead_code)]
+    pub(crate) fn span_to_snippet(&self, span: Span) -> &str {
+        let (BytePos(start_idx), BytePos(end_idx)) = (span.start, span.end);
+        &self.src[start_idx..end_idx]
     }
 
     /// Returns the line number for a `BytePos` if such is valid.
-    pub fn lookup_line_index(&self, pos: BytePos) -> Option<usize> {
+    #[allow(dead_code)]
+    pub(crate) fn lookup_line_index(&self, pos: BytePos) -> Option<usize> {
         let pos_index = pos.to_usize();
-        for (i, line_pos) in self.start_of_line_positions.iter().enumerate() {
+        for (i, line_pos) in self.start_pos_of_lines.iter().enumerate() {
             let line_pos_index = line_pos.to_usize();
             if pos_index < line_pos_index {
                 return Some(i - 1);
@@ -129,10 +134,11 @@ impl SourceFile {
 
     /// Returns the source information (line/column number etc) of a
     /// `BytePos` if such is valid.
+    #[allow(dead_code)]
     pub fn lookup_source_location(&self, pos: BytePos) -> Option<Loc> {
         self.lookup_line_index(pos).map(|line_index| {
             let line = line_index + 1;
-            let col = pos - self.start_of_line_positions[line_index];
+            let col = pos - self.start_pos_of_lines[line_index];
 
             Loc { line, col }
         })
@@ -163,10 +169,10 @@ mod tests {
     fn calc_line_positions_test() {
         let source_file = create_source_file();
 
-        assert_eq!(BytePos(0), source_file.start_of_line_positions[0]);
-        assert_eq!(BytePos(12), source_file.start_of_line_positions[1]);
-        assert_eq!(BytePos(25), source_file.start_of_line_positions[2]);
-        assert_eq!(BytePos(37), source_file.start_of_line_positions[3]);
+        assert_eq!(BytePos(0), source_file.start_pos_of_lines[0]);
+        assert_eq!(BytePos(12), source_file.start_pos_of_lines[1]);
+        assert_eq!(BytePos(25), source_file.start_pos_of_lines[2]);
+        assert_eq!(BytePos(37), source_file.start_pos_of_lines[3]);
     }
 
     #[test]

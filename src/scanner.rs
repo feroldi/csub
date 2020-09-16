@@ -6,7 +6,7 @@ use std::{iter::Peekable, str::Chars};
 use crate::source_map::{BytePos, Pos, Span};
 
 #[derive(Debug, PartialEq)]
-pub enum Category {
+enum Category {
     Kw(Keyword),
     Plus,
     Minus,
@@ -33,7 +33,7 @@ pub enum Category {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Keyword {
+enum Keyword {
     Else,
     If,
     Int,
@@ -43,7 +43,7 @@ pub enum Keyword {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Word {
+struct Word {
     pub category: Category,
     pub lexeme: Span,
 }
