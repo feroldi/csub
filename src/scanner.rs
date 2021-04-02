@@ -81,8 +81,9 @@ impl<'chars> CharBumper<'chars> {
     fn bump(&mut self) -> Option<char> {
         let next_char = self.char_stream.next();
         next_char.and_then(|c| {
-            let byte_length_in_utf8 = Pos::from_usize(c.len_utf8());
-            self.current_peek_pos = self.current_peek_pos + byte_length_in_utf8;
+            let num_of_bytes_in_utf8_char = Pos::from_usize(c.len_utf8());
+            self.current_peek_pos =
+                self.current_peek_pos + num_of_bytes_in_utf8_char;
             Some(c)
         })
     }
@@ -136,6 +137,11 @@ impl CSubScanner<'_> {
         let lexeme_start = self.char_stream.current_peek_pos;
         let scan_state = self.analyse_category_and_bump_chars();
         match scan_state {
+            Ok(ScanState::FoundCategory(Category::Ident)) => {
+                // TODO: CharBumper should be created by a `SourceMap`, so that
+                // we can request the text for a span.
+                todo!("scan keywords!")
+            }
             Ok(ScanState::FoundCategory(category)) => {
                 let lexeme = Span {
                     start: lexeme_start,
@@ -183,7 +189,7 @@ impl CSubScanner<'_> {
                 self.bump_number();
                 Category::Number
             }
-            Some('\x20' | '\n' | '\t') => return Ok(ScanState::Skipped),
+            Some(' ' | '\n' | '\t') => return Ok(ScanState::Skipped),
             None => return Ok(ScanState::ReachedEndOfInput),
             _ => todo!("Not tested"),
         };
@@ -223,7 +229,7 @@ impl CSubScanner<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CSubScanner, Category, CharBumper};
+    use super::{CSubScanner, Category, CharBumper, Keyword};
     use crate::{
         scanner::Word,
         source_map::{Pos, Span},
@@ -414,6 +420,11 @@ mod tests {
     #[test]
     fn scan_close_bracket_token() {
         assert_symbol("}", Category::CloseBracket, 1);
+    }
+
+    #[test]
+    fn scan_else_keyword_token() {
+        assert_symbol("else", Category::Kw(Keyword::Else), 4);
     }
 
     #[test]
